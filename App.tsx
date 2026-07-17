@@ -15,7 +15,6 @@ import {
 import { COURSES as INIT_COURSES, LECTURERS as INIT_LECTURERS, CATEGORIES as INIT_CATEGORIES } from './constants';
 import { checkConflicts, calculateDayLayout, getSlotLabel, generateAutoSchedule } from './utils/scheduleUtils';
 import { initSupabase, saveToCloud, loadFromCloud } from './utils/supabaseClient';
-import { setItem, getItem } from './utils/indexedDB'; // IMPORT INDEXEDDB UTILS
 
 import { ClassBlock } from './components/ClassBlock';
 import { AIAdvisor } from './components/AIAdvisor';
@@ -96,6 +95,11 @@ const App: React.FC = () => {
   const [cloudStatus, setCloudStatus] = useState<'disconnected' | 'connected' | 'syncing'>('disconnected');
   
   const [cloudConfig, setCloudConfig] = useState<{url: string, key: string} | null>(() => {
+      const envUrl = import.meta.env.VITE_SUPABASE_URL;
+      const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (envUrl && envKey) {
+          return { url: envUrl, key: envKey };
+      }
       const saved = loadFromLegacyStorage<{url:string, key:string}>('spac_supabase_config');
       return saved || { url: DEFAULT_SUPABASE_URL, key: DEFAULT_SUPABASE_KEY };
   });
@@ -119,66 +123,66 @@ const App: React.FC = () => {
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
-  // --- INITIAL DATA LOADING (MIGRATION: IDB -> LocalStorage -> Constants) ---
+  // --- INITIAL CLOUD DATA LOADING ---
   useEffect(() => {
-      const initData = async () => {
+      const loadData = async () => {
           setIsLoadingData(true);
-          try {
-              // 1. Cek IndexedDB (Primary Storage)
-              const [dbSchedule, dbCourses, dbLecturers, dbCategories] = await Promise.all([
-                  getItem<ScheduledClass[]>('spac_schedule'),
-                  getItem<Course[]>('spac_courses'),
-                  getItem<Lecturer[]>('spac_lecturers'),
-                  getItem<Category[]>('spac_categories')
-              ]);
+          setIsCloudLoaded(false);
 
-              // 2. Load Function (Priority: DB -> LocalStorage (Migration) -> Default)
-              
-              // Schedule
-              if (dbSchedule) {
-                  setSchedule(dbSchedule);
+          if (cloudConfig && cloudConfig.url && cloudConfig.key) {
+              const client = initSupabase(cloudConfig.url, cloudConfig.key);
+              if (client) {
+                  setCloudStatus('syncing');
+                  try {
+                      const [resSch, resCou, resLec, resCat] = await Promise.all([
+                          loadFromCloud('spac_schedule'),
+                          loadFromCloud('spac_courses'),
+                          loadFromCloud('spac_lecturers'),
+                          loadFromCloud('spac_categories')
+                      ]);
+
+                      if (resSch.data) setSchedule(resSch.data);
+                      else setSchedule([]);
+                      
+                      if (resCou.data) setCourses(resCou.data);
+                      else setCourses(INIT_COURSES);
+                      
+                      if (resLec.data) setLecturers(resLec.data);
+                      else setLecturers(INIT_LECTURERS);
+                      
+                      if (resCat.data) setCategories(resCat.data);
+                      else setCategories(INIT_CATEGORIES);
+
+                      setCloudStatus('connected');
+                  } catch (err) {
+                      console.error("Failed to load from cloud:", err);
+                      setCloudStatus('disconnected');
+                      setSchedule([]);
+                      setCourses(INIT_COURSES);
+                      setLecturers(INIT_LECTURERS);
+                      setCategories(INIT_CATEGORIES);
+                  }
               } else {
-                  const local = loadFromLegacyStorage<ScheduledClass[]>('spac_schedule');
-                  setSchedule(local || []);
+                  setCloudStatus('disconnected');
+                  setSchedule([]);
+                  setCourses(INIT_COURSES);
+                  setLecturers(INIT_LECTURERS);
+                  setCategories(INIT_CATEGORIES);
               }
-
-              // Courses
-              if (dbCourses) {
-                  setCourses(dbCourses);
-              } else {
-                  const local = loadFromLegacyStorage<Course[]>('spac_courses');
-                  setCourses(local || INIT_COURSES);
-              }
-
-              // Lecturers
-              if (dbLecturers) {
-                  setLecturers(dbLecturers);
-              } else {
-                  const local = loadFromLegacyStorage<Lecturer[]>('spac_lecturers');
-                  setLecturers(local || INIT_LECTURERS);
-              }
-
-              // Categories
-              if (dbCategories) {
-                  setCategories(dbCategories);
-              } else {
-                  const local = loadFromLegacyStorage<Category[]>('spac_categories');
-                  setCategories(local || INIT_CATEGORIES);
-              }
-
-          } catch (err) {
-              console.error("Failed to load data from IndexedDB:", err);
-              // Fallback emergency
+          } else {
+              setCloudStatus('disconnected');
+              setSchedule([]);
               setCourses(INIT_COURSES);
               setLecturers(INIT_LECTURERS);
               setCategories(INIT_CATEGORIES);
-          } finally {
-              setIsLoadingData(false);
           }
+          
+          setIsCloudLoaded(true);
+          setIsLoadingData(false);
       };
-
-      initData();
-  }, []);
+      
+      loadData();
+  }, []); // Run once
 
   // INIT HISTORY
   useEffect(() => {
@@ -188,38 +192,6 @@ const App: React.FC = () => {
       setHistoryIndex(0);
     }
   }, [isLoadingData]); // Wait for loading to finish
-
-  // INIT CLOUD ON MOUNT
-  useEffect(() => {
-      if (cloudConfig) {
-          const client = initSupabase(cloudConfig.url, cloudConfig.key);
-          if (client) {
-              setCloudStatus('syncing');
-              setIsCloudLoaded(false); // LOCK SAVING
-
-              // Try Load Initial Data from Cloud
-              Promise.all([
-                  loadFromCloud('spac_schedule'),
-                  loadFromCloud('spac_courses'),
-                  loadFromCloud('spac_lecturers'),
-                  loadFromCloud('spac_categories')
-              ]).then(([resSch, resCou, resLec, resCat]) => {
-                  // Only update state if data exists in cloud
-                  if (resSch.data) setSchedule(resSch.data);
-                  if (resCou.data) setCourses(resCou.data);
-                  if (resLec.data) setLecturers(resLec.data);
-                  if (resCat.data) setCategories(resCat.data);
-                  
-                  setCloudStatus('connected');
-                  setIsCloudLoaded(true); // UNLOCK SAVING
-              }).catch((err) => {
-                  console.error("Failed to load from cloud:", err);
-                  setCloudStatus('disconnected');
-                  setIsCloudLoaded(true); // Unlock anyway to allow local work
-              });
-          }
-      }
-  }, []); // Run once
 
   // CLOSE FILTER MENU ON CLICK OUTSIDE
   useEffect(() => {
@@ -308,38 +280,45 @@ const App: React.FC = () => {
       setCloudConfig(cfg);
       localStorage.setItem('spac_supabase_config', JSON.stringify(cfg));
       setCloudStatus('connected');
-      
-      // Force sync immediately
-      saveToCloud('spac_schedule', schedule);
-      saveToCloud('spac_courses', courses);
-      saveToCloud('spac_lecturers', lecturers);
-      saveToCloud('spac_categories', categories);
+      setIsCloudLoaded(false);
 
+      // Check if new database has data
+      const [resSch, resCou, resLec, resCat] = await Promise.all([
+          loadFromCloud('spac_schedule'),
+          loadFromCloud('spac_courses'),
+          loadFromCloud('spac_lecturers'),
+          loadFromCloud('spac_categories')
+      ]);
+
+      const hasData = resSch.data || resCou.data || resLec.data || resCat.data;
+
+      if (hasData) {
+          // Sync DOWN
+          if (resSch.data) setSchedule(resSch.data); else setSchedule([]);
+          if (resCou.data) setCourses(resCou.data); else setCourses(INIT_COURSES);
+          if (resLec.data) setLecturers(resLec.data); else setLecturers(INIT_LECTURERS);
+          if (resCat.data) setCategories(resCat.data); else setCategories(INIT_CATEGORIES);
+      } else {
+          // Sync UP (Cloud is empty)
+          saveToCloud('spac_schedule', schedule);
+          saveToCloud('spac_courses', courses);
+          saveToCloud('spac_lecturers', lecturers);
+          saveToCloud('spac_categories', categories);
+      }
+
+      setIsCloudLoaded(true);
       return true;
   };
 
-  // AUTOSAVE LOGIC (LOCAL via IndexedDB + CLOUD)
+  // AUTOSAVE LOGIC (CLOUD ONLY)
   useEffect(() => {
     // Only run autosave if authenticated and data is loaded
     if (!isAuthenticated || isLoadingData) return;
 
     setSaveStatus('saving');
     
-    // 1. Save Local (IndexedDB)
     const timer = setTimeout(async () => {
-      try {
-          // Use parallel writes for performance
-          await Promise.all([
-             setItem('spac_schedule', schedule),
-             setItem('spac_courses', courses),
-             setItem('spac_lecturers', lecturers),
-             setItem('spac_categories', categories)
-          ]);
-      } catch (e) {
-          console.error("AutoSave IndexedDB Failed", e);
-      }
-      
-      // 2. Save Cloud (if connected AND loaded)
+      // Save Cloud (if connected AND loaded)
       if ((cloudStatus === 'connected' || cloudStatus === 'syncing') && isCloudLoaded) {
           await Promise.all([
              saveToCloud('spac_schedule', schedule),
