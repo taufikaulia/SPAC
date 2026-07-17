@@ -160,21 +160,10 @@ export const checkConflicts = (
 export const calculateLecturerWorkload = (scheduledClasses: ScheduledClass[], courses: Course[], lecturerId: string): number => {
   let totalLoad = 0;
 
-  for (const scheduledClass of scheduledClasses) {
-    const course = courses.find(c => c.id === scheduledClass.courseId);
-    if (!course) continue;
-
+  for (const course of courses) {
     const lecturerAssignment = course.lecturers.find(l => l.lecturerId === lecturerId);
-    
     if (lecturerAssignment) {
-      if (course.sks > 0) {
-         // Pastikan durationSks valid sebelum dihitung
-         const validDuration = Number(scheduledClass.durationSks) || 0;
-         const ratio = validDuration / course.sks;
-         totalLoad += lecturerAssignment.sksLoad * ratio;
-      } else {
-         totalLoad += (Number(scheduledClass.durationSks) || 0); 
-      }
+      totalLoad += lecturerAssignment.sksLoad;
     }
   }
   
@@ -190,10 +179,19 @@ export const calculateDayLayout = (
   dayClasses: ScheduledClass[], 
   courses: Course[]
 ): { layout: Record<string, LayoutPosition>; maxCols: number } => {
+  const getSks = (cls: ScheduledClass) => {
+    let sks = Number(cls.durationSks);
+    if (isNaN(sks) || sks <= 0) {
+      const course = courses.find(c => c.id === cls.courseId);
+      sks = course && course.sks > 0 ? course.sks : 2;
+    }
+    return sks;
+  };
+
   const sorted = [...dayClasses].sort((a, b) => {
     if (a.startSlot !== b.startSlot) return a.startSlot - b.startSlot;
-    const durationA = a.durationSks || 0;
-    const durationB = b.durationSks || 0;
+    const durationA = getSks(a);
+    const durationB = getSks(b);
     return durationB - durationA;
   });
 
@@ -202,14 +200,14 @@ export const calculateDayLayout = (
 
   sorted.forEach(cls => {
     let placed = false;
-    const sks = Number(cls.durationSks) || 2; 
+    const sks = getSks(cls);
     const duration = sks * SLOTS_PER_SKS;
     const clsEnd = cls.startSlot + duration;
 
     for (let i = 0; i < columns.length; i++) {
       const col = columns[i];
       const hasCollision = col.some(existing => {
-        const dEx = (Number(existing.durationSks) || 2) * SLOTS_PER_SKS;
+        const dEx = getSks(existing) * SLOTS_PER_SKS;
         return (cls.startSlot < (existing.startSlot + dEx)) && (clsEnd > existing.startSlot);
       });
 
