@@ -145,36 +145,36 @@ const App: React.FC = () => {
                       else setSchedule([]);
                       
                       if (resCou.data) setCourses(resCou.data);
-                      else setCourses(INIT_COURSES);
+                      else setCourses([]);
                       
                       if (resLec.data) setLecturers(resLec.data);
-                      else setLecturers(INIT_LECTURERS);
+                      else setLecturers([]);
                       
                       if (resCat.data) setCategories(resCat.data);
-                      else setCategories(INIT_CATEGORIES);
+                      else setCategories([]);
 
                       setCloudStatus('connected');
                   } catch (err) {
                       console.error("Failed to load from cloud:", err);
                       setCloudStatus('disconnected');
                       setSchedule([]);
-                      setCourses(INIT_COURSES);
-                      setLecturers(INIT_LECTURERS);
-                      setCategories(INIT_CATEGORIES);
+                      setCourses([]);
+                      setLecturers([]);
+                      setCategories([]);
                   }
               } else {
                   setCloudStatus('disconnected');
                   setSchedule([]);
-                  setCourses(INIT_COURSES);
-                  setLecturers(INIT_LECTURERS);
-                  setCategories(INIT_CATEGORIES);
+                  setCourses([]);
+                  setLecturers([]);
+                  setCategories([]);
               }
           } else {
               setCloudStatus('disconnected');
               setSchedule([]);
-              setCourses(INIT_COURSES);
-              setLecturers(INIT_LECTURERS);
-              setCategories(INIT_CATEGORIES);
+              setCourses([]);
+              setLecturers([]);
+              setCategories([]);
           }
           
           setIsCloudLoaded(true);
@@ -211,7 +211,8 @@ const App: React.FC = () => {
   const [isDataManagerOpen, setIsDataManagerOpen] = useState(false);
   const [isRecapOpen, setIsRecapOpen] = useState(false);
   const [isAutoScheduleConfigOpen, setIsAutoScheduleConfigOpen] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [saveErrorMsg, setSaveErrorMsg] = useState<string | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<Date>(new Date());
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
   const [courseSearchQuery, setCourseSearchQuery] = useState<string>('');
@@ -295,9 +296,9 @@ const App: React.FC = () => {
       if (hasData) {
           // Sync DOWN
           if (resSch.data) setSchedule(resSch.data); else setSchedule([]);
-          if (resCou.data) setCourses(resCou.data); else setCourses(INIT_COURSES);
-          if (resLec.data) setLecturers(resLec.data); else setLecturers(INIT_LECTURERS);
-          if (resCat.data) setCategories(resCat.data); else setCategories(INIT_CATEGORIES);
+          if (resCou.data) setCourses(resCou.data); else setCourses([]);
+          if (resLec.data) setLecturers(resLec.data); else setLecturers([]);
+          if (resCat.data) setCategories(resCat.data); else setCategories([]);
       } else {
           // Sync UP (Cloud is empty)
           saveToCloud('spac_schedule', schedule);
@@ -320,14 +321,25 @@ const App: React.FC = () => {
     const timer = setTimeout(async () => {
       // Save Cloud (if connected AND loaded)
       if ((cloudStatus === 'connected' || cloudStatus === 'syncing') && isCloudLoaded) {
-          await Promise.all([
+          const results = await Promise.all([
              saveToCloud('spac_schedule', schedule),
              saveToCloud('spac_courses', courses),
              saveToCloud('spac_lecturers', lecturers),
              saveToCloud('spac_categories', categories)
           ]);
+          
+          const hasError = results.some(r => r.error);
+          if (hasError) {
+              const errors = results.filter(r => r.error).map(r => r.error?.message || JSON.stringify(r.error));
+              const errorStr = errors.join(', ');
+              console.error("Autosave to cloud failed: " + errorStr);
+              setSaveErrorMsg(errorStr);
+              setSaveStatus('error');
+              return;
+          }
       }
 
+      setSaveErrorMsg(null);
       setSaveStatus('saved');
       setLastSavedTime(new Date());
     }, 2000); // Debounce 2 seconds
@@ -900,6 +912,10 @@ const App: React.FC = () => {
                    <div className="flex items-center gap-1.5 text-xs text-indigo-500 font-medium">
                       <Loader2 size={14} className="animate-spin" /> Menyimpan...
                    </div>
+                ) : saveStatus === 'error' ? (
+                    <div className="flex items-center gap-1.5 text-xs text-rose-600 font-medium" title={saveErrorMsg || "Gagal menyimpan ke Cloud"}>
+                        <AlertTriangle size={14} /> Gagal Menyimpan
+                    </div>
                 ) : (
                     <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium" title={`Disimpan: ${lastSavedTime.toLocaleTimeString()}`}>
                         <Cloud size={14} /> Tersimpan
