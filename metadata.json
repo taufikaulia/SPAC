@@ -1,0 +1,6 @@
+{
+  "name": "SPAC - Sistem Penjadwalan Akademik Cerdas",
+  "description": "Aplikasi penjadwalan kuliah berbasis web yang berpusat pada SKS, manajemen konflik, dan optimasi jadwal menggunakan AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
