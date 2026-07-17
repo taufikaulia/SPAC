@@ -56,9 +56,9 @@ interface AppStateSnapshot {
   categories: Category[];
 }
 
-// DEFAULT CREDENTIALS (HARDCODED)
-const DEFAULT_SUPABASE_URL = "https://ejhghyxhpvbaluyxvbgo.supabase.co";
-const DEFAULT_SUPABASE_KEY = "sb_publishable_IunO1ku-_mjmDNjLel249g_XWh163DC";
+// DEFAULT CREDENTIALS (HARDCODED OR ENV)
+const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://ejhghyxhpvbaluyxvbgo.supabase.co";
+const DEFAULT_SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_IunO1ku-_mjmDNjLel249g_XWh163DC";
 
 // --- ACCESS CODE CONFIGURATION ---
 const APP_ACCESS_CODE = "oji070421"; // Kode Akses Default
