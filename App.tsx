@@ -54,9 +54,9 @@ interface AppStateSnapshot {
   categories: Category[];
 }
 
-// DEFAULT CREDENTIALS (HARDCODED OR ENV)
-const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://hwwhbsthrhlnbaezaowa.supabase.co";
-const DEFAULT_SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_3OCHUsjnBVUZcBRfBg-jng_ODlsJE4x";
+// DEFAULT CREDENTIALS (HARDCODED)
+const DEFAULT_SUPABASE_URL = "https://hwwhbsthrhlnbaezaowa.supabase.co";
+const DEFAULT_SUPABASE_KEY = "sb_publishable_3OCHUsjnBVUZcBRfBg-jng_ODlsJE4x";
 
 // --- ACCESS CODE CONFIGURATION ---
 const APP_ACCESS_CODE = "oji070421"; // Kode Akses Default
@@ -127,6 +127,8 @@ const App: React.FC = () => {
                           loadFromCloud('spac_lecturers'),
                           loadFromCloud('spac_categories')
                       ]);
+                      
+                      console.log("Cloud Load Results:", { resSch, resCou, resLec, resCat });
 
                       if (resSch.data) setSchedule(resSch.data);
                       else setSchedule([]);
