@@ -22,7 +22,6 @@ import { DataManager } from './components/DataManager';
 import { RecapModal } from './components/RecapModal';
 import { LecturerPanel } from './components/LecturerPanel';
 import { AutoScheduleConfig } from './components/AutoScheduleConfig';
-import { CloudConfigModal } from './components/CloudConfigModal';
 import { HelpModal } from './components/HelpModal'; 
 
 // Import CircleHelp instead of HelpCircle
@@ -56,8 +55,8 @@ interface AppStateSnapshot {
 }
 
 // DEFAULT CREDENTIALS (HARDCODED OR ENV)
-const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://ejhghyxhpvbaluyxvbgo.supabase.co";
-const DEFAULT_SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_IunO1ku-_mjmDNjLel249g_XWh163DC";
+const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://hwwhbsthrhlnbaezaowa.supabase.co";
+const DEFAULT_SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_3OCHUsjnBVUZcBRfBg-jng_ODlsJE4x";
 
 // --- ACCESS CODE CONFIGURATION ---
 const APP_ACCESS_CODE = "oji070421"; // Kode Akses Default
@@ -91,18 +90,7 @@ const App: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
 
   // CLOUD STATE
-  const [isCloudConfigOpen, setIsCloudConfigOpen] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<'disconnected' | 'connected' | 'syncing'>('disconnected');
-  
-  const [cloudConfig, setCloudConfig] = useState<{url: string, key: string} | null>(() => {
-      const envUrl = import.meta.env.VITE_SUPABASE_URL;
-      const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (envUrl && envKey) {
-          return { url: envUrl, key: envKey };
-      }
-      const saved = loadFromLegacyStorage<{url:string, key:string}>('spac_supabase_config');
-      return saved || { url: DEFAULT_SUPABASE_URL, key: DEFAULT_SUPABASE_KEY };
-  });
   
   // SAFETY LOCK: Prevent autosave until initial load is complete
   const [isCloudLoaded, setIsCloudLoaded] = useState(false);
@@ -129,9 +117,8 @@ const App: React.FC = () => {
           setIsLoadingData(true);
           setIsCloudLoaded(false);
 
-          if (cloudConfig && cloudConfig.url && cloudConfig.key) {
-              const client = initSupabase(cloudConfig.url, cloudConfig.key);
-              if (client) {
+          const client = initSupabase(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY);
+          if (client) {
                   setCloudStatus('syncing');
                   try {
                       const [resSch, resCou, resLec, resCat] = await Promise.all([
@@ -169,13 +156,6 @@ const App: React.FC = () => {
                   setLecturers([]);
                   setCategories([]);
               }
-          } else {
-              setCloudStatus('disconnected');
-              setSchedule([]);
-              setCourses([]);
-              setLecturers([]);
-              setCategories([]);
-          }
           
           setIsCloudLoaded(true);
           setIsLoadingData(false);
@@ -268,56 +248,11 @@ const App: React.FC = () => {
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
   }, [schedule, courses, lecturers, categories, history, historyIndex]);
-
-  // CLOUD CONNECT HANDLER
-  const handleCloudConnect = async (url: string, key: string) => {
-      const client = initSupabase(url, key);
-      if (!client) return false;
-      
-      const { error } = await loadFromCloud('spac_test_connection');
-      if (error && (error.code === '401' || error.message.includes('fetch'))) return false;
-
-      const cfg = { url, key };
-      setCloudConfig(cfg);
-      localStorage.setItem('spac_supabase_config', JSON.stringify(cfg));
-      setCloudStatus('connected');
-      setIsCloudLoaded(false);
-
-      // Check if new database has data
-      const [resSch, resCou, resLec, resCat] = await Promise.all([
-          loadFromCloud('spac_schedule'),
-          loadFromCloud('spac_courses'),
-          loadFromCloud('spac_lecturers'),
-          loadFromCloud('spac_categories')
-      ]);
-
-      const hasData = resSch.data || resCou.data || resLec.data || resCat.data;
-
-      if (hasData) {
-          // Sync DOWN
-          if (resSch.data) setSchedule(resSch.data); else setSchedule([]);
-          if (resCou.data) setCourses(resCou.data); else setCourses([]);
-          if (resLec.data) setLecturers(resLec.data); else setLecturers([]);
-          if (resCat.data) setCategories(resCat.data); else setCategories([]);
-      } else {
-          // Sync UP (Cloud is empty)
-          saveToCloud('spac_schedule', schedule);
-          saveToCloud('spac_courses', courses);
-          saveToCloud('spac_lecturers', lecturers);
-          saveToCloud('spac_categories', categories);
-      }
-
-      setIsCloudLoaded(true);
-      return true;
-  };
-
   // AUTOSAVE LOGIC (CLOUD ONLY)
   useEffect(() => {
-    // Only run autosave if authenticated and data is loaded
     if (!isAuthenticated || isLoadingData) return;
+    setSaveStatus("saving");
 
-    setSaveStatus('saving');
-    
     const timer = setTimeout(async () => {
       // Save Cloud (if connected AND loaded)
       if ((cloudStatus === 'connected' || cloudStatus === 'syncing') && isCloudLoaded) {
@@ -892,19 +827,18 @@ const App: React.FC = () => {
 
             <div className="w-px h-6 bg-slate-200"></div>
 
-            {/* CLOUD STATUS BUTTON */}
-            <button 
-                onClick={() => setIsCloudConfigOpen(true)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+            {/* CLOUD STATUS INDICATOR */}
+            <div 
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border ${
                     cloudStatus === 'connected' 
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
-                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                    : 'bg-slate-50 text-slate-500 border-slate-200'
                 }`}
-                title={cloudStatus === 'connected' ? 'Terhubung ke Supabase Cloud' : 'Klik untuk hubungkan database'}
+                title={cloudStatus === 'connected' ? 'Terhubung ke Supabase Cloud' : 'Offline dari database'}
             >
                 {cloudStatus === 'connected' ? <Wifi size={14} /> : <WifiOff size={14} />}
                 {cloudStatus === 'connected' ? 'Cloud Sync' : 'Offline'}
-            </button>
+            </div>
 
             {/* Autosave Status */}
             <div className="flex items-center gap-2 mr-2 border-r pr-4 border-slate-200">
@@ -1217,13 +1151,6 @@ const App: React.FC = () => {
       <AutoScheduleConfig isOpen={isAutoScheduleConfigOpen} onClose={() => setIsAutoScheduleConfigOpen(false)} onRun={handleRunAutoSchedule} />
       <AIAdvisor schedule={schedule} courses={courses} lecturers={lecturers} />
       
-      {/* CLOUD CONFIG MODAL */}
-      <CloudConfigModal 
-        isOpen={isCloudConfigOpen} 
-        onClose={() => setIsCloudConfigOpen(false)} 
-        onConnect={handleCloudConnect} 
-        currentConfig={cloudConfig}
-      />
 
       {/* HELP MODAL (PETUNJUK TEKNIS) */}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />

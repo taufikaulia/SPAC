@@ -13,8 +13,14 @@ let supabase: SupabaseClient | null = null;
 
 export const initSupabase = (url: string, key: string) => {
   if (!url || !key) return null;
+  
+  let validUrl = url.trim();
+  if (!validUrl.startsWith('http')) {
+      validUrl = 'https://' + validUrl;
+  }
+
   try {
-    supabase = createClient(url, key);
+    supabase = createClient(validUrl, key.trim());
     return supabase;
   } catch (e) {
     console.error("Supabase init failed", e);
