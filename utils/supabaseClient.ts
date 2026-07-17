@@ -1,3 +1,5 @@
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
 // Interface untuk data yang disimpan
 export interface CloudData {
   schedule: any[];
@@ -6,38 +8,61 @@ export interface CloudData {
   categories: any[];
 }
 
+let supabase: SupabaseClient | null = null;
+
 export const initSupabase = (url: string, key: string) => {
-  return true; // Fake init since we use backend proxy
+  if (!url || !key) return null;
+  
+  let validUrl = url.trim();
+  if (!validUrl.startsWith('http')) {
+      validUrl = 'https://' + validUrl;
+  }
+
+  try {
+    supabase = createClient(validUrl, key.trim());
+    return supabase;
+  } catch (e) {
+    console.error("Supabase init failed", e);
+    return null;
+  }
 };
 
-export const getSupabaseClient = () => null;
+export const getSupabaseClient = () => supabase;
 
 // Fungsi untuk menyimpan data ke tabel 'spac_data'
 export const saveToCloud = async (key: string, data: any) => {
+  if (!supabase) return { error: 'Not connected' };
+  
   try {
-    const res = await fetch('/api/data', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ key, value: data })
-    });
-    const result = await res.json();
-    if (result.error) return { error: result.error };
-    return { error: null };
-  } catch (e: any) {
-    return { error: { message: e.message } };
+    const { error } = await supabase
+      .from('spac_data')
+      .upsert({ key: key, value: data }, { onConflict: 'key' });
+      
+    return { error };
+  } catch (error: any) {
+    return { error };
   }
 };
 
 // Fungsi untuk mengambil data
 export const loadFromCloud = async (key: string) => {
+  if (!supabase) return { data: null, error: 'Not connected' };
+  
   try {
-    const res = await fetch(`/api/data/${key}`);
-    const result = await res.json();
-    if (result.error) return { data: null, error: result.error };
-    return { data: result.data, error: null };
-  } catch (e: any) {
-    return { data: null, error: { message: e.message } };
+    const { data, error } = await supabase
+      .from('spac_data')
+      .select('value')
+      .eq('key', key)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+         return { data: null, error: null };
+      }
+      return { data: null, error };
+    }
+    return { data: data.value, error: null };
+  } catch (error: any) {
+    return { data: null, error };
   }
 };
